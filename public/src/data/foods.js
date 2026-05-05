@@ -1,4 +1,4 @@
-import { baseUrl } from "../../env";
+import { baseUrl } from "../../env.js";
 // Central food data keeps components free from hard-coded content.
 export const foods = [
   {
