@@ -19,6 +19,7 @@ export function createFoodMarkerContent(location) {
 
   const marker = document.createElement("article");
   marker.className = "food-marker";
+  marker.dataset.locationId = String(location.id);
   marker.dataset.columns = String(columns);
   marker.dataset.rows = String(Math.max(1, Math.ceil(visibleDishes.length / 3)));
   marker.setAttribute("aria-label", `同一地点，共 ${dishes.length} 道菜`);
@@ -65,9 +66,9 @@ export function createFoodInfoWindow() {
  * @param {AMap.Map} map
  * @param {AMap.Marker} marker
  * @param {FoodLocation} location
- * @param {{ onCardEnter: () => void, onCardLeave: () => void }} hoverState
+ * @returns {HTMLElement | null} 实际渲染到信息窗口中的卡片节点
  */
-export function showFoodInfo(infoWindow, map, marker, location, hoverState) {
+export function showFoodInfo(infoWindow, map, marker, location) {
   const card = createFoodCard(location);
   infoWindow.setContent(card);
   infoWindow.setOffset(
@@ -80,7 +81,8 @@ export function showFoodInfo(infoWindow, map, marker, location, hoverState) {
   // 节点，否则鼠标移入卡片时无法取消 marker 的延迟关闭。
   const renderedCard =
     map.getContainer()?.querySelector(".food-card") ?? card;
-  bindCardInteraction(renderedCard, hoverState);
+  preventCardInteractionFromReachingMap(renderedCard);
+  return renderedCard;
 }
 
 function createMarkerDish(food) {
@@ -246,19 +248,7 @@ function createCardDish(food) {
   return dish;
 }
 
-function bindCardInteraction(card, hoverState) {
-  for (const eventName of [
-    "mouseenter",
-    "pointerenter",
-    "pointerover",
-    "pointermove",
-  ]) {
-    card.addEventListener(eventName, hoverState.onCardEnter);
-  }
-  for (const eventName of ["mouseleave", "pointerleave"]) {
-    card.addEventListener(eventName, hoverState.onCardLeave);
-  }
-
+function preventCardInteractionFromReachingMap(card) {
   // 卡片内的滚动、点击不要继续传给地图，否则地图会缩放或拖动。
   for (const eventName of ["wheel", "mousedown", "click", "pointerdown"]) {
     card.addEventListener(eventName, (event) => event.stopPropagation());

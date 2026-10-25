@@ -7,7 +7,6 @@ import { addFoodMarkers, createFoodMap } from "./js/map-view.js";
 const elements = {
   mapPage: document.querySelector("#map-page"),
   fullscreenButton: document.querySelector("#fullscreen-button"),
-  foodCount: document.querySelector("#food-count"),
   statusPanel: document.querySelector("#status-panel"),
   statusText: document.querySelector("#status-text"),
 };
@@ -30,7 +29,6 @@ async function startPage() {
     showStatus("正在读取美食数据…");
 
     const foods = await loadAllFoodRates();
-    elements.foodCount.textContent = String(foods.length);
 
     if (foods.length === 0) {
       showStatus("暂时没有美食数据");
