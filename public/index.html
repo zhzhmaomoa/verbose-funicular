@@ -3,35 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>日日好味 Food Ratings</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              display: ['"Noto Serif SC"', '"Songti SC"', 'serif'],
-              sans: ['"Noto Sans SC"', '"PingFang SC"', 'sans-serif'],
-            },
-            colors: {
-              ink: '#25211b',
-              tomato: '#d6402f',
-              leaf: '#2f7d56',
-              yolk: '#f5b642',
-              paper: '#fff8e8',
-              mint: '#dff2dc',
-            },
-            boxShadow: {
-              sticker: '0 18px 36px rgba(54, 41, 24, 0.18)',
-            },
-          },
-        },
-      };
-    </script>
-    <link rel="stylesheet" href="./src/styles.css" />
-    <script type="module" src="./src/main.js"></script>
+    <meta name="theme-color" content="#f6efe3" />
+    <title>美食地图</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="min-h-screen bg-paper font-sans text-ink antialiased">
-    <food-app></food-app>
+  <body>
+    <main class="map-page" id="map-page">
+      <!-- 高德地图会挂载到这个容器中 -->
+      <div class="map-canvas" id="map" aria-label="美食地图"></div>
+
+      <!-- 页面左上角的全屏切换按钮 -->
+      <button class="fullscreen-button" id="fullscreen-button" type="button" aria-pressed="false">
+        <span class="fullscreen-button__icon" id="fullscreen-icon" aria-hidden="true">⛶</span>
+        <span id="fullscreen-label">全屏</span>
+      </button>
+
+      <!-- 简单的标题和数量提示，方便远距离观看 -->
+      <section class="map-heading" aria-live="polite">
+        <p class="map-heading__eyebrow">城市味觉记录</p>
+        <h1>美食地图</h1>
+        <p class="map-heading__meta">已收录 <strong id="food-count">--</strong> 处美味</p>
+      </section>
+
+      <!-- 加载、空数据和错误提示共用这一块区域 -->
+      <section class="status-panel" id="status-panel" role="status" aria-live="polite">
+        <span class="status-panel__spinner" aria-hidden="true"></span>
+        <p id="status-text">正在加载地图…</p>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

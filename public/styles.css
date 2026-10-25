@@ -1,0 +1,669 @@
+:root {
+  --ink: #29231d;
+  --muted: #746b60;
+  --paper: #fffaf0;
+  --tomato: #d94b35;
+  --tomato-dark: #a83220;
+  --line: rgba(71, 54, 35, 0.14);
+  --glass: rgba(255, 250, 240, 0.94);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #e8e2d7;
+  color: var(--ink);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+button {
+  font: inherit;
+}
+
+.map-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+  background: #e8e2d7;
+}
+
+.map-page:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.fullscreen-button {
+  position: absolute;
+  top: clamp(18px, 1.5vw, 32px);
+  left: clamp(18px, 1.5vw, 32px);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: clamp(112px, 7vw, 156px);
+  min-height: clamp(52px, 3.3vw, 68px);
+  padding: 12px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  background: var(--glass);
+  color: var(--ink);
+  box-shadow: 0 14px 34px rgba(45, 34, 20, 0.2);
+  font-size: clamp(18px, 1.15vw, 26px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.fullscreen-button:hover {
+  transform: translateY(-2px);
+  background: #fffdf8;
+  box-shadow: 0 18px 40px rgba(45, 34, 20, 0.24);
+}
+
+.fullscreen-button:focus-visible {
+  outline: 4px solid rgba(217, 75, 53, 0.38);
+  outline-offset: 3px;
+}
+
+.fullscreen-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.fullscreen-button__icon {
+  font-size: 1.25em;
+  line-height: 1;
+}
+
+.map-heading {
+  position: absolute;
+  top: clamp(88px, 6vw, 122px);
+  left: clamp(18px, 1.5vw, 32px);
+  z-index: 10;
+  width: clamp(260px, 18vw, 370px);
+  padding: clamp(18px, 1.3vw, 28px);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 24px;
+  background: var(--glass);
+  box-shadow: 0 18px 48px rgba(45, 34, 20, 0.18);
+  backdrop-filter: blur(16px);
+}
+
+.map-heading__eyebrow {
+  margin: 0 0 8px;
+  color: var(--tomato-dark);
+  font-size: clamp(13px, 0.82vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.map-heading h1 {
+  margin: 0;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: clamp(34px, 2.5vw, 56px);
+  line-height: 1.08;
+  letter-spacing: 0.04em;
+}
+
+.map-heading__meta {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: clamp(15px, 0.95vw, 21px);
+}
+
+.map-heading__meta strong {
+  color: var(--tomato);
+  font-size: 1.25em;
+}
+
+.status-panel {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(24px, 2vw, 42px);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(760px, calc(100vw - 40px));
+  padding: 15px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 999px;
+  background: var(--glass);
+  color: var(--ink);
+  box-shadow: 0 16px 44px rgba(45, 34, 20, 0.2);
+  font-size: clamp(16px, 1vw, 22px);
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+
+.status-panel[hidden] {
+  display: none;
+}
+
+.status-panel p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.status-panel__spinner {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(217, 75, 53, 0.18);
+  border-top-color: var(--tomato);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+.status-panel.is-error {
+  border-color: rgba(217, 75, 53, 0.32);
+  border-radius: 20px;
+  color: #732315;
+}
+
+.status-panel.is-error .status-panel__spinner {
+  display: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 地图标注：同址菜品九宫格 ---------- */
+.food-marker {
+  position: relative;
+  padding: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  border-radius: 18px;
+  background: rgba(255, 250, 240, 0.97);
+  box-shadow: 0 12px 30px rgba(48, 35, 20, 0.24);
+  cursor: default;
+  transform: translateY(-5px);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.food-marker[data-columns="1"] {
+  width: clamp(138px, 9.4vw, 164px);
+}
+
+.food-marker[data-columns="2"] {
+  width: clamp(246px, 16.5vw, 286px);
+}
+
+.food-marker[data-columns="3"] {
+  width: clamp(330px, 21.5vw, 382px);
+}
+
+.food-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  width: 18px;
+  height: 18px;
+  border-right: 2px solid rgba(255, 255, 255, 0.96);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.96);
+  background: rgba(255, 250, 240, 0.97);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.food-marker:hover {
+  z-index: 2;
+  transform: translateY(-10px) scale(1.03);
+  box-shadow: 0 20px 44px rgba(48, 35, 20, 0.3);
+}
+
+.food-marker__grid {
+  display: grid;
+  gap: 7px;
+}
+
+.food-marker[data-columns="1"] .food-marker__grid {
+  grid-template-columns: 1fr;
+}
+
+.food-marker[data-columns="2"] .food-marker__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.food-marker[data-columns="3"] .food-marker__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.food-marker__dish {
+  min-width: 0;
+}
+
+.food-marker__image-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 11px;
+  background: #eadfce;
+}
+
+.food-marker__image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.food-marker__placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(24px, 1.7vw, 34px);
+}
+
+.food-marker__rate {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(41, 35, 29, 0.76);
+  color: #fffaf0;
+  font-size: clamp(9px, 0.58vw, 11px);
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  backdrop-filter: blur(5px);
+}
+
+.food-marker__dish-name {
+  position: relative;
+  height: 2.8em;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: clamp(12px, 0.72vw, 15px);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.food-marker[data-columns="1"] .food-marker__dish-name {
+  font-size: clamp(15px, 0.9vw, 18px);
+}
+
+.food-marker__dish-name-text {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.food-marker__dish-name-measure {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: auto;
+  visibility: hidden;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.food-marker__dish-marquee {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  overflow: hidden;
+}
+
+.food-marker__dish-marquee-track {
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.food-marker__dish-marquee-track span {
+  flex: none;
+  padding-right: 32px;
+}
+
+.food-marker__dish-name.is-marquee:hover .food-marker__dish-name-text {
+  visibility: hidden;
+}
+
+.food-marker__dish-name.is-marquee:hover .food-marker__dish-marquee {
+  display: flex;
+}
+
+.food-marker__dish-name.is-marquee:hover .food-marker__dish-marquee-track {
+  animation: food-dish-marquee 8s linear infinite;
+}
+
+.food-marker__more {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  display: grid;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  place-items: center;
+  border: 3px solid #fffaf0;
+  border-radius: 999px;
+  background: var(--tomato);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(116, 42, 28, 0.3);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@keyframes food-dish-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* MarkerCluster 的聚合圆点 */
+.food-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 5px solid rgba(255, 250, 240, 0.92);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #f37758 0, var(--tomato) 46%, var(--tomato-dark) 100%);
+  color: #fffaf0;
+  box-shadow: 0 12px 32px rgba(116, 42, 28, 0.34);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1;
+}
+
+.food-cluster strong {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.food-cluster span {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 鼠标悬浮时显示的多菜详情卡 ---------- */
+.food-card {
+  --food-card-item-height: 96px;
+  --food-card-gap: 8px;
+  display: flex;
+  flex-direction: column;
+  width: clamp(400px, 30vw, 510px);
+  max-height: min(72vh, 540px);
+  padding: clamp(15px, 1vw, 20px);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 22px;
+  background: rgba(255, 250, 240, 0.98);
+  color: var(--ink);
+  box-shadow: 0 22px 60px rgba(47, 33, 18, 0.28);
+  cursor: default;
+  pointer-events: auto;
+  backdrop-filter: blur(18px);
+}
+
+.food-card__top {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.food-card__eyebrow {
+  margin: 0 0 3px;
+  color: var(--tomato-dark);
+  font-size: clamp(10px, 0.62vw, 13px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.food-card__title {
+  margin: 0;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: clamp(21px, 1.3vw, 28px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.food-card__top > div {
+  min-width: 0;
+}
+
+.food-card__rate {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #f7dfd6;
+  color: var(--tomato-dark);
+  font-size: clamp(12px, 0.78vw, 15px);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.food-card__list {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--food-card-gap);
+  min-height: 0;
+  max-height: calc(
+    var(--food-card-item-height) * 3.5 + var(--food-card-gap) * 2.5
+  );
+  margin-top: 10px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(168, 50, 32, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+.food-card__list::-webkit-scrollbar {
+  width: 7px;
+}
+
+.food-card__list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(168, 50, 32, 0.38);
+}
+
+.food-card__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.food-card__dish {
+  display: grid;
+  flex: 0 0 var(--food-card-item-height);
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  min-height: var(--food-card-item-height);
+  padding: 6px;
+  border: 1px solid rgba(71, 54, 35, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.food-card__dish-image-wrap {
+  position: relative;
+  height: calc(var(--food-card-item-height) - 14px);
+  overflow: hidden;
+  border-radius: 10px;
+  background: #eadfce;
+}
+
+.food-card__dish-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.food-marker__image.is-loading,
+.food-card__dish-image.is-loading {
+  opacity: 0;
+}
+
+.food-card__dish-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
+
+.food-card__dish-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.food-card__dish-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.food-card__dish-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: clamp(15px, 0.9vw, 18px);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.food-card__dish-rate {
+  flex: 0 0 auto;
+  color: var(--tomato-dark);
+  font-size: clamp(10px, 0.66vw, 13px);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.food-card__dish-desc {
+  display: -webkit-box;
+  margin: 4px 0 3px;
+  overflow: hidden;
+  color: #61564b;
+  font-size: clamp(11px, 0.68vw, 13px);
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.food-card__dish-meta {
+  color: var(--muted);
+  font-size: clamp(9px, 0.58vw, 11px);
+  line-height: 1.25;
+}
+
+.food-card__location {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  padding: 8px 2px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: clamp(9px, 0.6vw, 11px);
+}
+
+.food-card__location span:first-child {
+  color: var(--tomato-dark);
+  font-weight: 800;
+}
+
+.food-card__location span:not(:first-child)::before {
+  content: "•";
+  margin-right: 7px;
+  color: var(--tomato);
+}
+
+/* 去掉高德信息窗口的默认白底，让自定义卡片自己控制样式 */
+.amap-info-content {
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: auto !important;
+}
+
+@media (max-width: 900px) {
+  .map-heading {
+    top: 86px;
+    width: min(290px, calc(100vw - 36px));
+  }
+
+  .map-heading h1 {
+    font-size: 32px;
+  }
+
+  .food-marker[data-columns="1"] {
+    width: 138px;
+  }
+
+  .food-marker[data-columns="2"] {
+    width: 246px;
+  }
+
+  .food-marker[data-columns="3"] {
+    width: 330px;
+  }
+
+  .food-card {
+    width: min(440px, calc(100vw - 32px));
+    max-height: 70vh;
+  }
+
+  .food-card__dish {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .food-card {
+    width: calc(100vw - 24px);
+  }
+
+  .food-card__dish {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+}
