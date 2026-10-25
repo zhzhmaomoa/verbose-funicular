@@ -60,7 +60,7 @@ export function addFoodMarkers(map, foods) {
 
   // 地图移动或缩放时关闭旧卡片，避免卡片和标注位置错开。
   map.on("movestart", () => {
-    hoverState.cancelClose();
+    hoverState.reset();
     infoWindow.close();
   });
   fitMapToLocations(map, locations);
@@ -114,10 +114,21 @@ function renderFoodMarker(context, map, infoWindow, points, hoverState) {
   marker.off("mouseover");
   marker.off("mouseout");
   marker.on("mouseover", () => {
+    setMarkerActive(marker, true);
     hoverState.cancelClose();
     showFoodInfo(infoWindow, map, marker, location, hoverState);
   });
-  marker.on("mouseout", hoverState.scheduleClose);
+  marker.on("mouseout", () => {
+    setMarkerActive(marker, false);
+    hoverState.scheduleClose();
+  });
+}
+
+function setMarkerActive(marker, isActive) {
+  const content = marker.getContent?.();
+  const markerElement =
+    content?.closest?.(".amap-marker") ?? content?.parentElement;
+  markerElement?.classList.toggle("is-food-marker-active", isActive);
 }
 
 function findFoodByMarker(marker, points) {
@@ -141,6 +152,7 @@ function findFoodByMarker(marker, points) {
  */
 function createInfoWindowHoverState(infoWindow) {
   let closeTimer = null;
+  let isCardHovered = false;
 
   const cancelClose = () => {
     if (closeTimer !== null) {
@@ -149,19 +161,64 @@ function createInfoWindowHoverState(infoWindow) {
     }
   };
 
+  const setInfoWindowActive = (isActive) => {
+    document
+      .querySelector(".amap-info")
+      ?.classList.toggle("is-food-card-active", isActive);
+  };
+
+  const reset = () => {
+    isCardHovered = false;
+    setInfoWindowActive(false);
+    cancelClose();
+  };
+
   const scheduleClose = () => {
+    if (isCardHovered) {
+      return;
+    }
+
     cancelClose();
     closeTimer = window.setTimeout(() => {
       closeTimer = null;
+      setInfoWindowActive(false);
       infoWindow.close();
-    }, 220);
+    }, 420);
   };
+
+  const setCardHovered = (nextHovered) => {
+    if (isCardHovered === nextHovered) {
+      return;
+    }
+
+    isCardHovered = nextHovered;
+    setInfoWindowActive(nextHovered);
+    if (nextHovered) {
+      cancelClose();
+    } else {
+      scheduleClose();
+    }
+  };
+
+  // 同时根据实际指针位置校正悬停状态，避免高德标注的 mouseout 晚于
+  // 卡片的进入事件，或指针离开卡片时没有触发 leave 事件。
+  document.addEventListener(
+    "pointermove",
+    (event) => {
+      const target = event.target;
+      setCardHovered(
+        target instanceof Element && Boolean(target.closest(".food-card")),
+      );
+    },
+    { passive: true },
+  );
 
   return {
     cancelClose,
+    reset,
     scheduleClose,
-    onCardEnter: cancelClose,
-    onCardLeave: scheduleClose,
+    onCardEnter: () => setCardHovered(true),
+    onCardLeave: () => setCardHovered(false),
   };
 }
 
@@ -213,4 +270,9 @@ function renderClusterMarker(context) {
   content.append(number, label);
   context.marker.setContent(content);
   context.marker.setOffset(new window.AMap.Pixel(-size / 2, -size / 2));
+
+  context.marker.off("mouseover");
+  context.marker.off("mouseout");
+  context.marker.on("mouseover", () => setMarkerActive(context.marker, true));
+  context.marker.on("mouseout", () => setMarkerActive(context.marker, false));
 }

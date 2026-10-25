@@ -238,6 +238,15 @@ button {
   box-shadow: 0 20px 44px rgba(48, 35, 20, 0.3);
 }
 
+/* 高德会为每个 Marker 创建独立的层叠上下文，悬停时需提升外层节点。 */
+.amap-marker.is-food-marker-active {
+  z-index: 2000 !important;
+}
+
+.amap-info.is-food-card-active {
+  z-index: 2100 !important;
+}
+
 .food-marker__grid {
   display: grid;
   gap: 7px;

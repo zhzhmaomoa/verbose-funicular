@@ -74,8 +74,13 @@ export function showFoodInfo(infoWindow, map, marker, location, hoverState) {
     new window.AMap.Pixel(0, -(getMarkerHeight(marker) + 16)),
   );
 
-  bindCardInteraction(card, hoverState);
   infoWindow.open(map, marker.getPosition());
+
+  // InfoWindow 会把传入节点渲染到自己的容器中，事件必须绑定到实际渲染后的
+  // 节点，否则鼠标移入卡片时无法取消 marker 的延迟关闭。
+  const renderedCard =
+    map.getContainer()?.querySelector(".food-card") ?? card;
+  bindCardInteraction(renderedCard, hoverState);
 }
 
 function createMarkerDish(food) {
@@ -242,8 +247,17 @@ function createCardDish(food) {
 }
 
 function bindCardInteraction(card, hoverState) {
-  card.addEventListener("mouseenter", hoverState.onCardEnter);
-  card.addEventListener("mouseleave", hoverState.onCardLeave);
+  for (const eventName of [
+    "mouseenter",
+    "pointerenter",
+    "pointerover",
+    "pointermove",
+  ]) {
+    card.addEventListener(eventName, hoverState.onCardEnter);
+  }
+  for (const eventName of ["mouseleave", "pointerleave"]) {
+    card.addEventListener(eventName, hoverState.onCardLeave);
+  }
 
   // 卡片内的滚动、点击不要继续传给地图，否则地图会缩放或拖动。
   for (const eventName of ["wheel", "mousedown", "click", "pointerdown"]) {
