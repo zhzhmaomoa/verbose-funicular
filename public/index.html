@@ -9,10 +9,9 @@
   </head>
   <body>
     <main class="map-page" id="map-page">
-      <!-- 高德地图会挂载到这个容器中 -->
+      <!-- 高德地图铺满整个屏幕，详情面板作为右侧浮层覆盖在地图上方 -->
       <div class="map-canvas" id="map" aria-label="美食地图"></div>
 
-      <!-- 页面左上角的全屏切换按钮 -->
       <button class="fullscreen-button" id="fullscreen-button" type="button" aria-pressed="false">
         <span class="fullscreen-button__icon" id="fullscreen-icon" aria-hidden="true">⛶</span>
         <span id="fullscreen-label">全屏</span>
@@ -23,6 +22,33 @@
         <span class="status-panel__spinner" aria-hidden="true"></span>
         <p id="status-text">正在加载地图…</p>
       </section>
+
+      <!--
+        右侧悬浮详情卡片：
+        1. 只有悬浮九宫格里的菜格时才显示；
+        2. 只展示标题、描述、经纬度和时间；
+        3. 图片位于上方，文字信息在图片下方排成两行。
+      -->
+      <aside class="dish-panel" id="dish-panel" aria-label="菜品详情" aria-live="polite" aria-hidden="true">
+        <article class="dish-panel__content">
+          <figure class="dish-panel__hero">
+            <img id="dish-panel-image" class="dish-panel__hero-image is-loading" alt="" />
+            <span class="dish-panel__image-placeholder" id="dish-panel-image-placeholder" aria-hidden="true">🍜</span>
+          </figure>
+
+          <div class="dish-panel__body" id="dish-panel-body">
+            <div class="dish-panel__line dish-panel__line--primary">
+              <h2 class="dish-panel__title" id="dish-panel-title"></h2>
+              <p class="dish-panel__description" id="dish-panel-description"></p>
+            </div>
+
+            <div class="dish-panel__line dish-panel__line--meta">
+              <span id="dish-panel-coordinates"></span>
+              <time id="dish-panel-date"></time>
+            </div>
+          </div>
+        </article>
+      </aside>
     </main>
 
     <script type="module" src="./app.js"></script>

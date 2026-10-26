@@ -1,11 +1,11 @@
 :root {
-  --ink: #29231d;
-  --muted: #746b60;
-  --paper: #fffaf0;
+  --ink: #2c241d;
+  --muted: #7c7065;
+  --paper: #fffaf2;
   --tomato: #d94b35;
-  --tomato-dark: #a83220;
-  --line: rgba(71, 54, 35, 0.14);
-  --glass: rgba(255, 250, 240, 0.94);
+  --tomato-dark: #9e3222;
+  --line: rgba(74, 55, 36, 0.13);
+  --glass: rgba(255, 250, 240, 0.9);
 }
 
 * {
@@ -31,6 +31,7 @@ button {
   font: inherit;
 }
 
+/* ---------- 页面骨架：全屏地图，右侧详情浮层按需显示 ---------- */
 .map-page {
   position: relative;
   width: 100vw;
@@ -46,6 +47,7 @@ button {
   height: 100vh;
 }
 
+/* 地图始终铺满整个视口；右侧卡片只是覆盖在上层的浮层。 */
 .map-canvas {
   position: absolute;
   inset: 0;
@@ -56,7 +58,7 @@ button {
   position: absolute;
   top: clamp(18px, 1.5vw, 32px);
   left: clamp(18px, 1.5vw, 32px);
-  z-index: 20;
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -102,11 +104,11 @@ button {
   position: absolute;
   left: 50%;
   bottom: clamp(24px, 2vw, 42px);
-  z-index: 25;
+  z-index: 35;
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: min(760px, calc(100vw - 40px));
+  max-width: min(660px, calc(100vw - 40px));
   padding: 15px 24px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 999px;
@@ -116,10 +118,6 @@ button {
   font-size: clamp(16px, 1vw, 22px);
   transform: translateX(-50%);
   backdrop-filter: blur(14px);
-}
-
-.status-panel[hidden] {
-  display: none;
 }
 
 .status-panel p {
@@ -153,15 +151,143 @@ button {
   }
 }
 
+/* ---------- 右侧详情卡片：图片在上，两行极简信息在下 ---------- */
+.dish-panel {
+  position: absolute;
+  top: clamp(20px, 2vw, 32px);
+  right: clamp(20px, 2vw, 32px);
+  z-index: 30;
+  width: min(575px, calc(100vw - 40px));
+  height: auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  background: rgba(255, 252, 247, 0.96);
+  box-shadow: 0 18px 52px rgba(48, 35, 20, 0.2);
+  backdrop-filter: blur(18px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    visibility 0s linear 220ms;
+}
+
+.dish-panel.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+.dish-panel__content {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+}
+
+/* 图片宽度撑满卡片；卡片自身不设固定高度，由图片和信息内容撑开。 */
+.dish-panel__hero {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  overflow: hidden;
+  background: #e9e1d5;
+}
+
+/* 前景照片不使用模糊或重滤镜，确保菜品清晰可见。 */
+.dish-panel__hero-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
+.dish-panel__hero-image.is-loading {
+  opacity: 0;
+}
+
+.dish-panel__image-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 40% 35%, rgba(255, 250, 242, 0.94), transparent 50%),
+    #ded1c0;
+  font-size: clamp(58px, 5vw, 96px);
+}
+
+.dish-panel__body {
+  padding: 15px 17px 17px;
+}
+
+.dish-panel__line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dish-panel__line + .dish-panel__line {
+  margin-top: 7px;
+}
+
+.dish-panel__line > :not([hidden]) + :not([hidden])::before {
+  content: "·";
+  margin-right: 8px;
+  color: #b6aa9d;
+}
+
+.dish-panel__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.dish-panel__description {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #6f6459;
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.dish-panel__line--meta {
+  color: #8a7e71;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+}
+
 /* ---------- 地图标注：同址菜品九宫格 ---------- */
 .food-marker {
   position: relative;
   padding: 8px;
   border: 2px solid rgba(255, 255, 255, 0.96);
   border-radius: 18px;
-  background: rgba(255, 250, 240, 0.97);
+  background: rgba(255, 250, 240, 0.96);
   box-shadow: 0 12px 30px rgba(48, 35, 20, 0.24);
-  cursor: default;
+  cursor: pointer;
   transform: translateY(-5px);
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
@@ -187,25 +313,20 @@ button {
   height: 18px;
   border-right: 2px solid rgba(255, 255, 255, 0.96);
   border-bottom: 2px solid rgba(255, 255, 255, 0.96);
-  background: rgba(255, 250, 240, 0.97);
+  background: rgba(255, 250, 240, 0.96);
   transform: translateX(-50%) rotate(45deg);
 }
 
 .food-marker:hover,
-.food-marker.is-active,
-.amap-marker.is-food-marker-active .food-marker {
+.food-marker:focus-within {
   z-index: 2;
-  transform: translateY(-10px) scale(1.03);
+  transform: translateY(-9px) scale(1.02);
   box-shadow: 0 20px 44px rgba(48, 35, 20, 0.3);
 }
 
-/* 高德会为每个 Marker 创建独立的层叠上下文，悬停时需提升外层节点。 */
+/* 高德为每个 Marker 创建独立层叠上下文，悬浮时由 JS 提升外层节点。 */
 .amap-marker.is-food-marker-active {
   z-index: 2000 !important;
-}
-
-.amap-info.is-food-card-active {
-  z-index: 2100 !important;
 }
 
 .food-marker__grid {
@@ -227,6 +348,23 @@ button {
 
 .food-marker__dish {
   min-width: 0;
+  padding: 3px;
+  border-radius: 14px;
+  outline: none;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.food-marker__dish:hover,
+.food-marker__dish.is-active,
+.food-marker__dish:focus-visible {
+  background: rgba(255, 235, 218, 0.9);
+  box-shadow: 0 9px 20px rgba(99, 51, 28, 0.18);
+  transform: translateY(-2px);
+}
+
+.food-marker__dish:focus-visible {
+  outline: 3px solid rgba(217, 75, 53, 0.55);
+  outline-offset: 1px;
 }
 
 .food-marker__image-wrap {
@@ -239,10 +377,16 @@ button {
 }
 
 .food-marker__image {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
   object-fit: cover;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.food-marker__image.is-loading {
+  opacity: 0;
 }
 
 .food-marker__placeholder {
@@ -269,7 +413,7 @@ button {
 }
 
 .food-marker__dish-name {
-  position: relative;
+  display: -webkit-box;
   height: 2.8em;
   margin-top: 5px;
   overflow: hidden;
@@ -277,61 +421,13 @@ button {
   font-size: clamp(12px, 0.72vw, 15px);
   font-weight: 700;
   line-height: 1.4;
-}
-
-.food-marker[data-columns="1"] .food-marker__dish-name {
-  font-size: clamp(15px, 0.9vw, 18px);
-}
-
-.food-marker__dish-name-text {
-  display: -webkit-box;
-  overflow: hidden;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-.food-marker__dish-name-measure {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: auto;
-  visibility: hidden;
-  overflow-wrap: anywhere;
-  pointer-events: none;
-}
-
-.food-marker__dish-marquee {
-  position: absolute;
-  inset: 0;
-  display: none;
-  align-items: center;
-  overflow: hidden;
-}
-
-.food-marker__dish-marquee-track {
-  display: flex;
-  width: max-content;
-  white-space: nowrap;
-  will-change: transform;
-}
-
-.food-marker__dish-marquee-track span {
-  flex: none;
-  padding-right: 32px;
-}
-
-.food-marker__dish-name.is-marquee:hover .food-marker__dish-name-text {
-  visibility: hidden;
-}
-
-.food-marker__dish-name.is-marquee:hover .food-marker__dish-marquee {
-  display: flex;
-}
-
-.food-marker__dish-name.is-marquee:hover .food-marker__dish-marquee-track {
-  animation: food-dish-marquee 8s linear infinite;
+.food-marker[data-columns="1"] .food-marker__dish-name {
+  font-size: clamp(15px, 0.9vw, 18px);
 }
 
 .food-marker__more {
@@ -350,12 +446,6 @@ button {
   box-shadow: 0 5px 14px rgba(116, 42, 28, 0.3);
   font-size: 12px;
   font-weight: 800;
-}
-
-@keyframes food-dish-marquee {
-  to {
-    transform: translateX(-50%);
-  }
 }
 
 /* MarkerCluster 的聚合圆点 */
@@ -385,217 +475,6 @@ button {
   letter-spacing: 0.08em;
 }
 
-/* ---------- 鼠标悬浮时显示的多菜详情卡 ---------- */
-.food-card {
-  --food-card-item-height: 96px;
-  --food-card-gap: 8px;
-  display: flex;
-  flex-direction: column;
-  width: clamp(400px, 30vw, 510px);
-  max-height: min(72vh, 540px);
-  padding: clamp(15px, 1vw, 20px);
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  border-radius: 22px;
-  background: rgba(255, 250, 240, 0.98);
-  color: var(--ink);
-  box-shadow: 0 22px 60px rgba(47, 33, 18, 0.28);
-  cursor: default;
-  pointer-events: auto;
-  backdrop-filter: blur(18px);
-}
-
-.food-card__top {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 0 2px 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.food-card__eyebrow {
-  margin: 0 0 3px;
-  color: var(--tomato-dark);
-  font-size: clamp(10px, 0.62vw, 13px);
-  font-weight: 800;
-  letter-spacing: 0.18em;
-}
-
-.food-card__title {
-  margin: 0;
-  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: clamp(21px, 1.3vw, 28px);
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.food-card__top > div {
-  min-width: 0;
-}
-
-.food-card__rate {
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: #f7dfd6;
-  color: var(--tomato-dark);
-  font-size: clamp(12px, 0.78vw, 15px);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.food-card__list {
-  display: flex;
-  flex: 0 1 auto;
-  flex-direction: column;
-  gap: var(--food-card-gap);
-  min-height: 0;
-  max-height: calc(
-    var(--food-card-item-height) * 3.5 + var(--food-card-gap) * 2.5
-  );
-  margin-top: 10px;
-  padding-right: 4px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-color: rgba(168, 50, 32, 0.38) transparent;
-  scrollbar-width: thin;
-}
-
-.food-card__list::-webkit-scrollbar {
-  width: 7px;
-}
-
-.food-card__list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(168, 50, 32, 0.38);
-}
-
-.food-card__list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.food-card__dish {
-  display: grid;
-  flex: 0 0 var(--food-card-item-height);
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 10px;
-  min-height: var(--food-card-item-height);
-  padding: 6px;
-  border: 1px solid rgba(71, 54, 35, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.58);
-}
-
-.food-card__dish-image-wrap {
-  position: relative;
-  height: calc(var(--food-card-item-height) - 14px);
-  overflow: hidden;
-  border-radius: 10px;
-  background: #eadfce;
-}
-
-.food-card__dish-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.food-marker__image.is-loading,
-.food-card__dish-image.is-loading {
-  opacity: 0;
-}
-
-.food-card__dish-placeholder {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-}
-
-.food-card__dish-body {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.food-card__dish-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.food-card__dish-title {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
-  font-size: clamp(15px, 0.9vw, 18px);
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.food-card__dish-rate {
-  flex: 0 0 auto;
-  color: var(--tomato-dark);
-  font-size: clamp(10px, 0.66vw, 13px);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.food-card__dish-desc {
-  display: -webkit-box;
-  margin: 4px 0 3px;
-  overflow: hidden;
-  color: #61564b;
-  font-size: clamp(11px, 0.68vw, 13px);
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.food-card__dish-meta {
-  color: var(--muted);
-  font-size: clamp(9px, 0.58vw, 11px);
-  line-height: 1.25;
-}
-
-.food-card__location {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 8px;
-  padding: 8px 2px 0;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: clamp(9px, 0.6vw, 11px);
-}
-
-.food-card__location span:first-child {
-  color: var(--tomato-dark);
-  font-weight: 800;
-}
-
-.food-card__location span:not(:first-child)::before {
-  content: "•";
-  margin-right: 7px;
-  color: var(--tomato);
-}
-
-/* 去掉高德信息窗口的默认白底，让自定义卡片自己控制样式 */
-.amap-info-content {
-  padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  pointer-events: auto !important;
-}
-
 @media (max-width: 900px) {
   .food-marker[data-columns="1"] {
     width: 138px;
@@ -608,23 +487,36 @@ button {
   .food-marker[data-columns="3"] {
     width: 330px;
   }
+}
 
-  .food-card {
-    width: min(440px, calc(100vw - 32px));
-    max-height: 70vh;
+/* 小屏保留同样紧凑的卡片，只收窄外边距和文字间距。 */
+@media (max-width: 700px) {
+  .status-panel {
+    max-width: calc(100vw - 32px);
   }
 
-  .food-card__dish {
-    grid-template-columns: 104px minmax(0, 1fr);
+  .dish-panel {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    border-radius: 16px;
+  }
+
+  .dish-panel__hero {
+    aspect-ratio: 16 / 10;
+  }
+
+  .dish-panel__body {
+    padding: 13px 14px 15px;
   }
 }
 
-@media (max-width: 520px) {
-  .food-card {
-    width: calc(100vw - 24px);
-  }
-
-  .food-card__dish {
-    grid-template-columns: 88px minmax(0, 1fr);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }

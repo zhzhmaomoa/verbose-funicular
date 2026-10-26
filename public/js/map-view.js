@@ -1,28 +1,16 @@
-import {
-  createFoodInfoWindow,
-  createFoodMarkerContent,
-  showFoodInfo,
-} from "./marker-view.js";
+import { createFoodMarkerContent } from "./marker-view.js";
+import { createDishPanel } from "./dish-panel.js";
 import { groupFoodsByLocation } from "./data.js";
 
 /**
- * 点标记选型说明（后续数据增长时不要随意换回普通 Marker）：
- * - AMap.Marker：每个点一个 DOM，样式简单，但几千个点就容易卡顿。
- * - AMap.MassMarks：适合十万级纯图标，但不能在点内直接显示标题。
- * - AMap.LabelMarker：适合海量图标 + 文本，但没有现成的近距离聚合。
- * - AMap.ElasticMarker：适合随缩放自动换样式的图标，不适合做聚合。
- * - AMap.MarkerCluster：只渲染当前可见点，并自动聚合相近点；
- *   同时支持 renderMarker 自定义图片 + 标题，最符合本页需求。
- *
- * 因此这里使用 MarkerCluster，而不是手动创建一大组 AMap.Marker。
- * 数据继续增长时，优先保留 MarkerCluster，再考虑服务端按可视区域返回数据。
+ * 标记选型说明：
+ * AMap.MarkerCluster 只渲染当前可见点，并自动聚合相近位置。
+ * 每个地点内部再用九宫格展示最多九道菜，兼顾可读性和大量数据时的性能。
  */
 const CHINA_CENTER = [104.195397, 35.86166];
-const HOVER_CLOSE_DELAY = 420;
-const clusterHoverHandlers = new WeakMap();
 
 /**
- * 初始化高德地图。地图本身只负责底图和缩放。
+ * 初始化高德地图。地图始终铺满视口，详情面板作为右侧浮层覆盖在地图上方。
  */
 export function createFoodMap(containerId) {
   return new window.AMap.Map(containerId, {
@@ -35,14 +23,17 @@ export function createFoodMap(containerId) {
 }
 
 /**
- * 准备聚合数据并自定义每个美食标记。
- * 高德 JS API 2.0 的 MarkerCluster 会接收经纬度数据，再通过 renderMarker 绘制标记。
+ * 创建聚合标记，并绑定“九宫格菜品 -> 右侧详情面板”的选择逻辑。
+ *
  * @param {AMap.Map} map
  * @param {import("./data.js").FoodRate[]} foods
+ * @param {HTMLElement} dishPanelElement
  */
-export function addFoodMarkers(map, foods) {
-  const infoWindow = createFoodInfoWindow();
-  const hoverState = createMarkerHoverController(map, infoWindow);
+export function addFoodMarkers(map, foods, dishPanelElement) {
+  const activeSelection = { content: null };
+  const dishPanel = createDishPanel(dishPanelElement, {
+    onHide: () => clearActiveSelection(activeSelection),
+  });
   const locations = groupFoodsByLocation(foods);
   const points = locations.map((location) => ({
     ...location,
@@ -53,72 +44,213 @@ export function addFoodMarkers(map, foods) {
     gridSize: 100,
     maxZoom: 16,
     renderMarker: (context) =>
-      renderFoodMarker(context, map, infoWindow, points, hoverState),
+      renderFoodMarker(context, points, dishPanel, activeSelection),
     renderClusterMarker: renderClusterMarker,
   });
 
-  // 点击聚合点时再放大，直到拆成更小的聚合点或单个标记。
+  // 聚合点点击后放大，直到拆成更小的聚合点或单个地点标记。
   cluster.on("click", (event) => zoomIntoCluster(map, event));
+  fitMapToLocations(map, locations, dishPanelElement);
 
-  // 地图移动或缩放时关闭旧卡片，避免卡片和标注位置错开。
-  map.on("movestart", hoverState.reset);
-  fitMapToLocations(map, locations);
-
-  return { cluster, infoWindow, locations };
-}
-
-function fitMapToLocations(map, locations) {
-  if (locations.length === 0) {
-    return;
-  }
-
-  if (locations.length === 1) {
-    map.setZoomAndCenter(14, [locations[0].lng, locations[0].lat]);
-    return;
-  }
-
-  const lngList = locations.map((location) => location.lng);
-  const latList = locations.map((location) => location.lat);
-  const southWest = [Math.min(...lngList), Math.min(...latList)];
-  const northEast = [Math.max(...lngList), Math.max(...latList)];
-  const bounds = new window.AMap.Bounds(southWest, northEast);
-  const padding = [150, 150, 150, 150];
-  const [zoom, center] = map.getFitZoomAndCenterByBounds(bounds, padding, 16);
-  map.setZoomAndCenter(zoom, center);
+  return { cluster, locations };
 }
 
 /**
- * renderMarker 是 MarkerCluster 绘制单个地点时调用的回调。
- * context.data[0] 就是上一步传入的某一个地点及其菜品列表。
+ * MarkerCluster 绘制单个地点时调用。
  */
-function renderFoodMarker(context, map, infoWindow, points, hoverState) {
-  const location = context.data?.[0] ?? findFoodByMarker(context.marker, points);
+function renderFoodMarker(context, points, dishPanel, activeSelection) {
+  const location = context.data?.[0] ?? findLocationByMarker(context.marker, points);
   if (!location) {
     return;
   }
 
   const marker = context.marker;
-  // 拖动地图时 MarkerCluster 可能反复调用 renderMarker。同一地点直接复用
-  // 已有内容，避免图片节点被重建后重新加载而闪烁。
-  if (marker.__foodLocationId !== location.id || !marker.getContent?.()) {
+  let content = marker.getContent?.();
+
+  // 地图移动时 renderMarker 可能重复执行。相同地点复用原 DOM，
+  // 既避免图片重新加载，也避免重复绑定事件。
+  if (
+    marker.__foodLocationId !== location.id ||
+    !(content instanceof Element)
+  ) {
     marker.__foodLocationId = location.id;
-    marker.setContent(createFoodMarkerContent(location));
+    content = createFoodMarkerContent(location);
+    marker.setContent(content);
   }
 
   marker.setAnchor("bottom-center");
   marker.setExtData(location);
-  hoverState.attachMarker(marker, location.id);
+  bindDishSelection(content, location, dishPanel, activeSelection);
 }
 
-function setMarkerActive(marker, isActive) {
-  const content = marker.getContent?.();
-  const markerElement =
-    content?.closest?.(".amap-marker") ?? content?.parentElement;
-  content?.classList?.toggle("is-active", isActive);
-  markerElement?.classList.toggle("is-food-marker-active", isActive);
+/**
+ * 用事件委托监听九宫格内的菜品，不依赖地图弹窗。
+ * marker 或卡片任一处于 hover 状态时保持显示，两者都离开后延迟收起。
+ */
+function bindDishSelection(content, location, dishPanel, activeSelection) {
+  if (content.dataset.selectionBound === "true") {
+    return;
+  }
+  content.dataset.selectionBound = "true";
+
+  let markerHovered = false;
+  let activeDishId = null;
+  const hoverStartEvent = supportsPointerEvents()
+    ? "pointerenter"
+    : "mouseenter";
+  const hoverEndEvent = supportsPointerEvents() ? "pointerleave" : "mouseleave";
+  const hoverSelectEvent = supportsPointerEvents() ? "pointerover" : "mouseover";
+
+  const selectDish = (dishElement, isMarkerHovered = false) => {
+    const dishIndex = Number(dishElement.dataset.dishIndex);
+    const food = location.dishes[dishIndex];
+    if (!food) {
+      return;
+    }
+
+    if (
+      activeSelection.content &&
+      activeSelection.content !== content
+    ) {
+      setActiveDish(activeSelection.content, null);
+    }
+    activeSelection.content = content;
+    activeDishId = food.id;
+    dishPanel.cancelHide();
+    if (isMarkerHovered) {
+      dishPanel.setMarkerHovered(location.id, true);
+    }
+    setMarkerHighlighted(true);
+    setActiveDish(content, dishElement);
+    dishPanel.showDish(location, food);
+  };
+
+  const selectFromEvent = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const dishElement = target.closest(".food-marker__dish");
+    if (dishElement && content.contains(dishElement)) {
+      selectDish(dishElement, event.type === hoverSelectEvent);
+    }
+  };
+
+  // 只绑定指针事件或鼠标事件其中之一，避免电视端同一动作触发两次冲突逻辑。
+  content.addEventListener(hoverSelectEvent, selectFromEvent);
+  content.addEventListener("click", selectFromEvent);
+
+  // 用键盘聚焦九宫格时，同样把对应菜品显示到右侧。
+  content.addEventListener("focusin", selectFromEvent);
+  content.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const dishElement = event.target.closest?.(".food-marker__dish");
+    if (!dishElement || !content.contains(dishElement)) {
+      return;
+    }
+
+    event.preventDefault();
+    selectDish(dishElement);
+  });
+
+  // 某些电视浏览器没有 :has()，这里直接给高德外层节点加类名，确保悬浮标记置顶。
+  const setMarkerHighlighted = (isHighlighted) => {
+    const markerElement = content.closest(".amap-marker");
+    markerElement?.classList.toggle("is-food-marker-active", isHighlighted);
+  };
+
+  content.addEventListener(hoverStartEvent, () => {
+    markerHovered = true;
+    dishPanel.cancelHide();
+    if (activeDishId) {
+      dishPanel.setMarkerHovered(location.id, true);
+    }
+    setMarkerHighlighted(true);
+  });
+  content.addEventListener(hoverEndEvent, () => {
+    markerHovered = false;
+    setMarkerHighlighted(false);
+    dishPanel.setMarkerHovered(location.id, false);
+  });
+  content.addEventListener("focusin", () => setMarkerHighlighted(true));
+  content.addEventListener("focusout", (event) => {
+    if (!getDishElement(event.relatedTarget, content)) {
+      setMarkerHighlighted(false);
+      if (!markerHovered) {
+        dishPanel.scheduleHide(activeDishId);
+      }
+    }
+  });
 }
 
-function findFoodByMarker(marker, points) {
+function getDishElement(target, content) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  const dish = target.closest(".food-marker__dish");
+  return dish && content.contains(dish) ? dish : null;
+}
+
+function setActiveDish(content, activeDish) {
+  for (const dish of content.querySelectorAll(".food-marker__dish")) {
+    dish.classList.toggle("is-active", dish === activeDish);
+  }
+}
+
+function clearActiveSelection(activeSelection) {
+  if (!activeSelection.content) {
+    return;
+  }
+
+  setActiveDish(activeSelection.content, null);
+  activeSelection.content = null;
+}
+
+function supportsPointerEvents() {
+  return typeof window !== "undefined" && "PointerEvent" in window;
+}
+
+function fitMapToLocations(map, locations, dishPanelElement) {
+  if (locations.length === 0) {
+    return;
+  }
+
+  const lngList = locations.map((location) => location.lng);
+  const latList = locations.map((location) => location.lat);
+  // 单点时给边界留一点范围，仍然复用同一套“左侧有效区域”计算。
+  const lngSpread = Math.max(
+    0.01,
+    (Math.max(...lngList) - Math.min(...lngList)) * 0.02,
+  );
+  const latSpread = Math.max(
+    0.01,
+    (Math.max(...latList) - Math.min(...latList)) * 0.02,
+  );
+  const southWest = [
+    Math.min(...lngList) - lngSpread,
+    Math.min(...latList) - latSpread,
+  ];
+  const northEast = [
+    Math.max(...lngList) + lngSpread,
+    Math.max(...latList) + latSpread,
+  ];
+  const bounds = new window.AMap.Bounds(southWest, northEast);
+
+  // 右侧紧凑卡片需要留出显示空间，通过不对称 padding 避免标记被遮住。
+  const mapWidth = map.getContainer()?.clientWidth ?? window.innerWidth;
+  const cardWidth = dishPanelElement?.getBoundingClientRect().width || 460;
+  const rightPadding = Math.min(mapWidth * 0.7, cardWidth + 80);
+  const padding = [100, rightPadding, 100, 100];
+  const [zoom, center] = map.getFitZoomAndCenterByBounds(bounds, padding, 16);
+  map.setZoomAndCenter(zoom, center);
+}
+
+function findLocationByMarker(marker, points) {
   const position = marker.getPosition();
   if (!position) {
     return null;
@@ -133,267 +265,23 @@ function findFoodByMarker(marker, points) {
   );
 }
 
-/**
- * 统一管理 marker 高亮、卡片打开和关闭。
- *
- * 电视浏览器即使连接鼠标，也可能只触发 mousemove 而遗漏 AMap Marker 的
- * mouseover；因此这里不再把 mouseover 当作唯一入口，而是同时使用：
- * 1. AMap Marker 的 mouseover/mousemove/click；
- * 2. 标注 DOM 的 pointerenter/mouseenter/click；
- * 3. 文档捕获阶段的指针移动 + elementFromPoint 命中检测。
- *
- * 三类事件最终都进入同一套幂等状态，重复触发不会重建卡片或导致闪烁。
- * @param {AMap.Map} map
- * @param {AMap.InfoWindow} infoWindow
- */
-function createMarkerHoverController(map, infoWindow) {
-  let closeTimer = null;
-  let isCardHovered = false;
-  let activeLocationId = null;
-  let activeMarker = null;
-  let openLocationId = null;
-  let pointerPosition = null;
-  const markersByLocationId = new Map();
-  const markerBindings = new WeakMap();
-  const boundMarkerContents = new WeakSet();
-  const boundCards = new WeakSet();
+function renderClusterMarker(context) {
+  const count =
+    Number(context.count) || Number(context.marker?.getCount?.()) || 1;
+  const size = Math.min(92, 54 + Math.log2(count + 1) * 10);
+  const content = document.createElement("div");
+  content.className = "food-cluster";
+  content.style.width = `${size}px`;
+  content.style.height = `${size}px`;
 
-  const cancelClose = () => {
-    if (closeTimer !== null) {
-      window.clearTimeout(closeTimer);
-      closeTimer = null;
-    }
-  };
+  const number = document.createElement("strong");
+  number.textContent = String(count);
+  const label = document.createElement("span");
+  label.textContent = "处美食";
+  content.append(number, label);
 
-  const setInfoWindowActive = (isActive) => {
-    (map.getContainer()?.querySelector(".amap-info") ??
-      document.querySelector(".amap-info"))
-      ?.classList.toggle("is-food-card-active", isActive);
-  };
-
-  const deactivateMarker = () => {
-    if (activeMarker) {
-      setMarkerActive(activeMarker, false);
-    }
-    activeMarker = null;
-    activeLocationId = null;
-  };
-
-  const pointerIsOnActiveSurface = () => {
-    if (!pointerPosition) {
-      return false;
-    }
-
-    const element = document.elementFromPoint(
-      pointerPosition.x,
-      pointerPosition.y,
-    );
-    if (element?.closest(".food-card")) {
-      return true;
-    }
-
-    const markerElement = element?.closest(".food-marker");
-    return markerElement?.dataset.locationId === activeLocationId;
-  };
-
-  const scheduleClose = (expectedLocationId) => {
-    const expectedId =
-      expectedLocationId == null ? null : String(expectedLocationId);
-    if (expectedId !== null && expectedId !== activeLocationId) {
-      return;
-    }
-
-    if (isCardHovered) {
-      return;
-    }
-
-    cancelClose();
-    closeTimer = window.setTimeout(() => {
-      closeTimer = null;
-      if (isCardHovered || pointerIsOnActiveSurface()) {
-        return;
-      }
-
-      deactivateMarker();
-      setInfoWindowActive(false);
-      openLocationId = null;
-      infoWindow.close();
-    }, HOVER_CLOSE_DELAY);
-  };
-
-  const setCardHovered = (nextHovered) => {
-    if (isCardHovered === nextHovered) {
-      return;
-    }
-
-    isCardHovered = nextHovered;
-    if (nextHovered) {
-      cancelClose();
-    } else {
-      scheduleClose();
-    }
-  };
-
-  const bindCard = (card) => {
-    if (!(card instanceof Element) || boundCards.has(card)) {
-      return;
-    }
-
-    boundCards.add(card);
-    card.addEventListener("pointerenter", () => setCardHovered(true));
-    card.addEventListener("mouseenter", () => setCardHovered(true));
-    card.addEventListener("pointerleave", () => setCardHovered(false));
-    card.addEventListener("mouseleave", () => setCardHovered(false));
-  };
-
-  const openMarker = (locationId) => {
-    const id = String(locationId);
-    const marker = markersByLocationId.get(id);
-    const location = marker?.getExtData?.();
-    if (!marker || !location) {
-      return;
-    }
-
-    isCardHovered = false;
-    cancelClose();
-
-    if (activeLocationId !== id) {
-      deactivateMarker();
-      activeLocationId = id;
-      activeMarker = marker;
-      setMarkerActive(marker, true);
-    }
-
-    setInfoWindowActive(true);
-    if (openLocationId === id && infoWindow.getIsOpen?.() !== false) {
-      return;
-    }
-
-    const card = showFoodInfo(infoWindow, map, marker, location);
-    openLocationId = id;
-    bindCard(card);
-  };
-
-  const attachMarker = (marker, locationId) => {
-    const id = String(locationId);
-    markersByLocationId.set(id, marker);
-
-    const content = marker.getContent?.();
-    if (content instanceof Element && !boundMarkerContents.has(content)) {
-      boundMarkerContents.add(content);
-      content.addEventListener("pointerenter", () => openMarker(id));
-      content.addEventListener("mouseenter", () => openMarker(id));
-      content.addEventListener("pointerleave", () => scheduleClose(id));
-      content.addEventListener("mouseleave", () => scheduleClose(id));
-      content.addEventListener("click", (event) => {
-        event.stopPropagation();
-        openMarker(id);
-      });
-    }
-
-    const previous = markerBindings.get(marker);
-    if (previous) {
-      marker.off("mouseover", previous.onOver);
-      marker.off("mousemove", previous.onMove);
-      marker.off("mouseout", previous.onOut);
-      marker.off("click", previous.onClick);
-    }
-
-    const handlers = {
-      onOver: () => openMarker(id),
-      onMove: () => openMarker(id),
-      onOut: () => scheduleClose(id),
-      onClick: () => openMarker(id),
-    };
-    marker.on("mouseover", handlers.onOver);
-    marker.on("mousemove", handlers.onMove);
-    marker.on("mouseout", handlers.onOut);
-    marker.on("click", handlers.onClick);
-    markerBindings.set(marker, handlers);
-  };
-
-  const handlePointerMove = (event) => {
-    if (event.pointerType === "touch") {
-      return;
-    }
-
-    if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-      pointerPosition = { x: event.clientX, y: event.clientY };
-    }
-
-    const pointerElement = findPointerElement(event);
-    const card = pointerElement?.closest(".food-card");
-    if (card) {
-      setCardHovered(true);
-      return;
-    }
-
-    const markerElement = pointerElement?.closest(".food-marker");
-    const markerId = markerElement?.dataset.locationId;
-    if (markerId && markersByLocationId.has(markerId)) {
-      openMarker(markerId);
-      return;
-    }
-
-    if (activeLocationId !== null || isCardHovered) {
-      deactivateMarker();
-      setCardHovered(false);
-      scheduleClose();
-    }
-  };
-
-  const reset = () => {
-    cancelClose();
-    isCardHovered = false;
-    openLocationId = null;
-    deactivateMarker();
-    setInfoWindowActive(false);
-    infoWindow.close();
-  };
-
-  document.addEventListener("pointermove", handlePointerMove, {
-    capture: true,
-    passive: true,
-  });
-  document.addEventListener("mousemove", handlePointerMove, {
-    capture: true,
-    passive: true,
-  });
-
-  infoWindow.on?.("close", () => {
-    if (infoWindow.getIsOpen?.()) {
-      return;
-    }
-
-    openLocationId = null;
-    window.setTimeout(() => {
-      if (openLocationId !== null) {
-        return;
-      }
-
-      isCardHovered = false;
-      deactivateMarker();
-      setInfoWindowActive(false);
-    }, 0);
-  });
-
-  return {
-    attachMarker,
-    reset,
-  };
-}
-
-function findPointerElement(event) {
-  const directTarget = event.target instanceof Element ? event.target : null;
-  if (directTarget?.closest(".food-card, .food-marker")) {
-    return directTarget;
-  }
-
-  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-    return directTarget;
-  }
-
-  return document.elementFromPoint(event.clientX, event.clientY);
+  context.marker.setContent(content);
+  context.marker.setAnchor("center");
 }
 
 function zoomIntoCluster(map, event) {
@@ -423,40 +311,4 @@ function getPointLat(point) {
   return Array.isArray(point.lnglat)
     ? Number(point.lnglat[1])
     : Number(point.lnglat.lat);
-}
-
-/**
- * 聚合点使用自定义圆形样式，数字越大，圆点稍微放大。
- */
-function renderClusterMarker(context) {
-  const count = Number(context.count) || 1;
-  const size = Math.min(92, 54 + Math.log2(count + 1) * 10);
-  const content = document.createElement("div");
-  content.className = "food-cluster";
-  content.style.width = `${size}px`;
-  content.style.height = `${size}px`;
-
-  const number = document.createElement("strong");
-  number.textContent = String(count);
-  const label = document.createElement("span");
-  label.textContent = "处美食";
-
-  content.append(number, label);
-  context.marker.setContent(content);
-  context.marker.setOffset(new window.AMap.Pixel(-size / 2, -size / 2));
-
-  const marker = context.marker;
-  const previous = clusterHoverHandlers.get(marker);
-  if (previous) {
-    marker.off("mouseover", previous.onOver);
-    marker.off("mouseout", previous.onOut);
-  }
-
-  const handlers = {
-    onOver: () => setMarkerActive(marker, true),
-    onOut: () => setMarkerActive(marker, false),
-  };
-  marker.on("mouseover", handlers.onOver);
-  marker.on("mouseout", handlers.onOut);
-  clusterHoverHandlers.set(marker, handlers);
 }

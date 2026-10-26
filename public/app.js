@@ -9,6 +9,7 @@ const elements = {
   fullscreenButton: document.querySelector("#fullscreen-button"),
   statusPanel: document.querySelector("#status-panel"),
   statusText: document.querySelector("#status-text"),
+  dishPanel: document.querySelector("#dish-panel"),
 };
 
 let map = null;
@@ -35,7 +36,7 @@ async function startPage() {
       return;
     }
 
-    addFoodMarkers(map, foods);
+    addFoodMarkers(map, foods, elements.dishPanel);
     hideStatus();
   } catch (error) {
     console.error(error);
