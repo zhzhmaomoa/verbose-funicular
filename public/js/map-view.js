@@ -1,16 +1,22 @@
 import { createFoodMarkerContent } from "./marker-view.js";
 import { createDishPanel } from "./dish-panel.js";
 import { groupFoodsByLocation } from "./data.js";
+import { fitMapToLocations } from "./map-viewport.js";
 
 /**
- * 标记选型说明：
- * AMap.MarkerCluster 只渲染当前可见点，并自动聚合相近位置。
- * 每个地点内部再用九宫格展示最多九道菜，兼顾可读性和大量数据时的性能。
+ * 美食地图的主交互只有一条链路：
+ *
+ *   点击九宫格中的菜格 -> 高亮对应菜格 -> 打开右侧详情卡片
+ *   点击卡片/标注以外的区域，或拖动、缩放地图 -> 关闭卡片
+ *
+ * 不再根据 hover 自动打开或延迟关闭卡片。这样 PC、移动端和电视端
+ * 使用完全相同的状态机，也不会出现鼠标移向卡片时卡片先消失的问题。
  */
+
 const CHINA_CENTER = [104.195397, 35.86166];
 
 /**
- * 初始化高德地图。地图始终铺满视口，详情面板作为右侧浮层覆盖在地图上方。
+ * 初始化高德地图。地图始终铺满视口，详情卡片作为右侧浮层覆盖在地图上方。
  */
 export function createFoodMap(containerId) {
   return new window.AMap.Map(containerId, {
@@ -23,17 +29,20 @@ export function createFoodMap(containerId) {
 }
 
 /**
- * 创建聚合标记，并绑定“九宫格菜品 -> 右侧详情面板”的选择逻辑。
+ * 创建聚合标注并安装统一的点击选择逻辑。
  *
  * @param {AMap.Map} map
  * @param {import("./data.js").FoodRate[]} foods
  * @param {HTMLElement} dishPanelElement
  */
 export function addFoodMarkers(map, foods, dishPanelElement) {
-  const activeSelection = { content: null };
+  let selectionController = null;
   const dishPanel = createDishPanel(dishPanelElement, {
-    onHide: () => clearActiveSelection(activeSelection),
+    // 面板无论由谁关闭（外部点击、地图移动或 Escape），都同步清理标注选中态。
+    onHide: () => selectionController?.clear(),
   });
+  selectionController = createSelectionController(dishPanel);
+
   const locations = groupFoodsByLocation(foods);
   const points = locations.map((location) => ({
     ...location,
@@ -44,22 +53,68 @@ export function addFoodMarkers(map, foods, dishPanelElement) {
     gridSize: 100,
     maxZoom: 16,
     renderMarker: (context) =>
-      renderFoodMarker(context, points, dishPanel, activeSelection),
+      renderFoodMarker(context, points, selectionController),
     renderClusterMarker: renderClusterMarker,
   });
 
-  // 聚合点点击后放大，直到拆成更小的聚合点或单个地点标记。
+  // 聚合点点击后放大，直到拆成更小的聚合点或单个地点标注。
   cluster.on("click", (event) => zoomIntoCluster(map, event));
-  fitMapToLocations(map, locations, dishPanelElement);
 
-  return { cluster, locations };
+  // 地图拖动、缩放时卡片会与标注位置错开，因此把它视同“点击了地图外部”。
+  // movestart 同时覆盖拖拽和滚轮/触摸缩放；dragstart 作为旧电视浏览器的兜底。
+  map.on("movestart", selectionController.hide);
+  map.on("dragstart", selectionController.hide);
+  map.on("zoomstart", selectionController.hide);
+
+  const onDocumentClick = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      selectionController.hide();
+      return;
+    }
+
+    // 点击卡片内部保持当前选择；点击标注由标注自己的 click 处理。
+    if (target.closest(".dish-panel, .food-marker")) {
+      return;
+    }
+
+    selectionController.hide();
+  };
+
+  const onDocumentKeyDown = (event) => {
+    if (event.key === "Escape") {
+      selectionController.hide();
+    }
+  };
+
+  // 捕获阶段监听可以处理地图、聚合点、控制条以及页面空白处等所有“外部点击”。
+  document.addEventListener("click", onDocumentClick, true);
+  document.addEventListener("keydown", onDocumentKeyDown);
+
+  // 启动时一次性展示全部地点；卡片默认隐藏，所以无需给右侧卡片预留视口。
+  fitMapToLocations(map, locations);
+
+  return {
+    cluster,
+    locations,
+    dispose() {
+      document.removeEventListener("click", onDocumentClick, true);
+      document.removeEventListener("keydown", onDocumentKeyDown);
+      map.off?.("movestart", selectionController.hide);
+      map.off?.("dragstart", selectionController.hide);
+      map.off?.("zoomstart", selectionController.hide);
+      selectionController.hide();
+    },
+  };
 }
 
 /**
- * MarkerCluster 绘制单个地点时调用。
+ * MarkerCluster 绘制单个地点时调用。地图移动会反复触发 renderMarker，
+ * 因此同一地点复用原 DOM，避免图片重新加载和事件重复绑定。
  */
-function renderFoodMarker(context, points, dishPanel, activeSelection) {
-  const location = context.data?.[0] ?? findLocationByMarker(context.marker, points);
+function renderFoodMarker(context, points, selectionController) {
+  const location =
+    context.data?.[0] ?? findLocationByMarker(context.marker, points);
   if (!location) {
     return;
   }
@@ -67,8 +122,6 @@ function renderFoodMarker(context, points, dishPanel, activeSelection) {
   const marker = context.marker;
   let content = marker.getContent?.();
 
-  // 地图移动时 renderMarker 可能重复执行。相同地点复用原 DOM，
-  // 既避免图片重新加载，也避免重复绑定事件。
   if (
     marker.__foodLocationId !== location.id ||
     !(content instanceof Element)
@@ -80,174 +133,115 @@ function renderFoodMarker(context, points, dishPanel, activeSelection) {
 
   marker.setAnchor("bottom-center");
   marker.setExtData(location);
-  bindDishSelection(content, location, dishPanel, activeSelection);
+  bindDishSelection(content, location, selectionController);
 }
 
 /**
- * 用事件委托监听九宫格内的菜品，不依赖地图弹窗。
- * marker 或卡片任一处于 hover 状态时保持显示，两者都离开后延迟收起。
+ * 每个地点标记内部只绑定一次事件委托。
+ * click 负责主要交互，Enter/Space 保留键盘可访问性。
  */
-function bindDishSelection(content, location, dishPanel, activeSelection) {
+function bindDishSelection(content, location, selectionController) {
   if (content.dataset.selectionBound === "true") {
     return;
   }
   content.dataset.selectionBound = "true";
 
-  let markerHovered = false;
-  let activeDishId = null;
-  const hoverStartEvent = supportsPointerEvents()
-    ? "pointerenter"
-    : "mouseenter";
-  const hoverEndEvent = supportsPointerEvents() ? "pointerleave" : "mouseleave";
-  const hoverSelectEvent = supportsPointerEvents() ? "pointerover" : "mouseover";
+  const selectFromTarget = (target) => {
+    if (!(target instanceof Element)) {
+      return false;
+    }
 
-  const selectDish = (dishElement, isMarkerHovered = false) => {
+    // 点在菜格内时展示对应菜；点在标记留白/“+N”徽标上时展示第一道可见菜。
+    const dishElement =
+      target.closest(".food-marker__dish") ??
+      content.querySelector(".food-marker__dish");
+    if (!dishElement || !content.contains(dishElement)) {
+      return false;
+    }
+
+    selectionController.show(content, location, dishElement);
+    return true;
+  };
+
+  content.addEventListener("click", (event) => {
+    if (!selectFromTarget(event.target)) {
+      return;
+    }
+
+    // 阻止事件继续传给高德地图，避免同一次点击又被判定为地图点击。
+    event.stopPropagation();
+  });
+
+  content.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    if (!selectFromTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  });
+}
+
+/**
+ * 单一选中状态控制器：同一时刻最多只有一个标注处于激活状态。
+ * 标注 DOM 只负责呈现，详情卡片只负责显示，二者由这里同步。
+ */
+function createSelectionController(dishPanel) {
+  let activeContent = null;
+
+  const show = (content, location, dishElement) => {
     const dishIndex = Number(dishElement.dataset.dishIndex);
     const food = location.dishes[dishIndex];
     if (!food) {
       return;
     }
 
-    if (
-      activeSelection.content &&
-      activeSelection.content !== content
-    ) {
-      setActiveDish(activeSelection.content, null);
+    if (activeContent && activeContent !== content) {
+      setActiveDish(activeContent, null);
+      setMarkerActive(activeContent, false);
     }
-    activeSelection.content = content;
-    activeDishId = food.id;
-    dishPanel.cancelHide();
-    if (isMarkerHovered) {
-      dishPanel.setMarkerHovered(location.id, true);
-    }
-    setMarkerHighlighted(true);
+
+    activeContent = content;
     setActiveDish(content, dishElement);
+    setMarkerActive(content, true);
     dishPanel.showDish(location, food);
   };
 
-  const selectFromEvent = (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
+  const clear = () => {
+    if (!activeContent) {
       return;
     }
 
-    const dishElement = target.closest(".food-marker__dish");
-    if (dishElement && content.contains(dishElement)) {
-      selectDish(dishElement, event.type === hoverSelectEvent);
-    }
+    setActiveDish(activeContent, null);
+    setMarkerActive(activeContent, false);
+    activeContent = null;
   };
 
-  // 只绑定指针事件或鼠标事件其中之一，避免电视端同一动作触发两次冲突逻辑。
-  content.addEventListener(hoverSelectEvent, selectFromEvent);
-  content.addEventListener("click", selectFromEvent);
-
-  // 用键盘聚焦九宫格时，同样把对应菜品显示到右侧。
-  content.addEventListener("focusin", selectFromEvent);
-  content.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    const dishElement = event.target.closest?.(".food-marker__dish");
-    if (!dishElement || !content.contains(dishElement)) {
-      return;
-    }
-
-    event.preventDefault();
-    selectDish(dishElement);
-  });
-
-  // 某些电视浏览器没有 :has()，这里直接给高德外层节点加类名，确保悬浮标记置顶。
-  const setMarkerHighlighted = (isHighlighted) => {
-    const markerElement = content.closest(".amap-marker");
-    markerElement?.classList.toggle("is-food-marker-active", isHighlighted);
+  const hide = () => {
+    dishPanel.hideDish();
+    clear();
   };
 
-  content.addEventListener(hoverStartEvent, () => {
-    markerHovered = true;
-    dishPanel.cancelHide();
-    if (activeDishId) {
-      dishPanel.setMarkerHovered(location.id, true);
-    }
-    setMarkerHighlighted(true);
-  });
-  content.addEventListener(hoverEndEvent, () => {
-    markerHovered = false;
-    setMarkerHighlighted(false);
-    dishPanel.setMarkerHovered(location.id, false);
-  });
-  content.addEventListener("focusin", () => setMarkerHighlighted(true));
-  content.addEventListener("focusout", (event) => {
-    if (!getDishElement(event.relatedTarget, content)) {
-      setMarkerHighlighted(false);
-      if (!markerHovered) {
-        dishPanel.scheduleHide(activeDishId);
-      }
-    }
-  });
+  return { show, hide, clear };
 }
 
-function getDishElement(target, content) {
-  if (!(target instanceof Element)) {
-    return null;
-  }
-
-  const dish = target.closest(".food-marker__dish");
-  return dish && content.contains(dish) ? dish : null;
-}
-
-function setActiveDish(content, activeDish) {
-  for (const dish of content.querySelectorAll(".food-marker__dish")) {
-    dish.classList.toggle("is-active", dish === activeDish);
+function setActiveDish(content, activeDishElement) {
+  for (const dishElement of content.querySelectorAll(".food-marker__dish")) {
+    const isActive = dishElement === activeDishElement;
+    dishElement.classList.toggle("is-active", isActive);
+    dishElement.setAttribute("aria-pressed", String(isActive));
   }
 }
 
-function clearActiveSelection(activeSelection) {
-  if (!activeSelection.content) {
-    return;
-  }
-
-  setActiveDish(activeSelection.content, null);
-  activeSelection.content = null;
-}
-
-function supportsPointerEvents() {
-  return typeof window !== "undefined" && "PointerEvent" in window;
-}
-
-function fitMapToLocations(map, locations, dishPanelElement) {
-  if (locations.length === 0) {
-    return;
-  }
-
-  const lngList = locations.map((location) => location.lng);
-  const latList = locations.map((location) => location.lat);
-  // 单点时给边界留一点范围，仍然复用同一套“左侧有效区域”计算。
-  const lngSpread = Math.max(
-    0.01,
-    (Math.max(...lngList) - Math.min(...lngList)) * 0.02,
-  );
-  const latSpread = Math.max(
-    0.01,
-    (Math.max(...latList) - Math.min(...latList)) * 0.02,
-  );
-  const southWest = [
-    Math.min(...lngList) - lngSpread,
-    Math.min(...latList) - latSpread,
-  ];
-  const northEast = [
-    Math.max(...lngList) + lngSpread,
-    Math.max(...latList) + latSpread,
-  ];
-  const bounds = new window.AMap.Bounds(southWest, northEast);
-
-  // 右侧紧凑卡片需要留出显示空间，通过不对称 padding 避免标记被遮住。
-  const mapWidth = map.getContainer()?.clientWidth ?? window.innerWidth;
-  const cardWidth = dishPanelElement?.getBoundingClientRect().width || 460;
-  const rightPadding = Math.min(mapWidth * 0.7, cardWidth + 80);
-  const padding = [100, rightPadding, 100, 100];
-  const [zoom, center] = map.getFitZoomAndCenterByBounds(bounds, padding, 16);
-  map.setZoomAndCenter(zoom, center);
+function setMarkerActive(content, isActive) {
+  content.classList.toggle("is-active", isActive);
+  content
+    .closest(".amap-marker")
+    ?.classList.toggle("is-food-marker-active", isActive);
 }
 
 function findLocationByMarker(marker, points) {

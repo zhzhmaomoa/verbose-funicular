@@ -1,14 +1,12 @@
 /**
  * 右侧菜品详情卡片。
  *
- * 数据变化只通过 showDish() 进入这里。地图标记不需要知道卡片内部结构，
- * 后续交接时可以把“选择菜品”和“展示菜品”分开理解。
+ * 卡片只响应明确的选择结果，不监听 hover、不设置延迟关闭计时器。
+ * 打开与关闭的决策全部在 map-view.js 的选中状态控制器中完成。
  *
  * @typedef {import("./data.js").FoodLocation} FoodLocation
  * @typedef {import("./data.js").FoodRate} FoodRate
  */
-
-const HIDE_DELAY_MS = 280;
 
 /**
  * @param {HTMLElement} panel
@@ -27,33 +25,13 @@ export function createDishPanel(panel, options = {}) {
 
   let currentDishId = null;
   let imageVersion = 0;
-  let cardHovered = false;
-  let hoveredMarkerId = null;
-  let hideTimer = null;
-
-  // 只绑定一套 hover 事件：现代浏览器用 pointer，电视端旧浏览器回退到 mouse。
-  const hoverStartEvent = supportsPointerEvents()
-    ? "pointerenter"
-    : "mouseenter";
-  const hoverEndEvent = supportsPointerEvents() ? "pointerleave" : "mouseleave";
-
-  panel.addEventListener(hoverStartEvent, () => {
-    cardHovered = true;
-    cancelHide();
-  });
-  panel.addEventListener(hoverEndEvent, () => {
-    cardHovered = false;
-    scheduleHide();
-  });
 
   /**
    * @param {FoodLocation} location
    * @param {FoodRate} food
    */
   function showDish(location, food) {
-    cancelHide();
-
-    // 九宫格会持续触发 hover 事件，同一道菜已显示时不重复更新 DOM。
+    // 重复点击同一道菜、且卡片已经可见时，不重复刷新图片和动画。
     if (currentDishId === food.id && panel.classList.contains("is-visible")) {
       return;
     }
@@ -75,6 +53,22 @@ export function createDishPanel(panel, options = {}) {
     animateBody();
   }
 
+  function hideDish() {
+    const wasVisible = panel.classList.contains("is-visible");
+    if (!wasVisible) {
+      currentDishId = null;
+      return;
+    }
+
+    panel.classList.remove("is-visible");
+    panel.setAttribute("aria-hidden", "true");
+    currentDishId = null;
+
+    // 让仍在加载中的旧图片失效；下一次打开时会使用新的版本号。
+    imageVersion += 1;
+    options.onHide?.();
+  }
+
   /**
    * 先预加载新图片，加载成功后再替换面板图片，避免旧图和新图短暂混在一起。
    * @param {FoodRate} food
@@ -87,7 +81,7 @@ export function createDishPanel(panel, options = {}) {
 
     if (!food.imageSrc) {
       refs.image.alt = "";
-      currentDishId = food.id;
+      refs.image.classList.remove("is-loading");
       return;
     }
 
@@ -129,81 +123,9 @@ export function createDishPanel(panel, options = {}) {
     );
   }
 
-  function hideDish() {
-    cancelHide();
-    const wasVisible = panel.classList.contains("is-visible");
-    panel.classList.remove("is-visible");
-    panel.setAttribute("aria-hidden", "true");
-    currentDishId = null;
-    hoveredMarkerId = null;
-
-    if (wasVisible) {
-      options.onHide?.();
-    }
-  }
-
-  /**
-   * 鼠标离开 marker 或卡片后延迟收起。进入任一区域都会取消这次收起，
-   * 留出从 marker 移动到卡片的操作时间。
-   * @param {string | null} [dishId]
-   */
-  function scheduleHide(dishId = currentDishId) {
-    cancelHide();
-    if (!dishId || cardHovered || hoveredMarkerId !== null) {
-      return;
-    }
-
-    hideTimer = window.setTimeout(() => {
-      hideTimer = null;
-      if (
-        cardHovered ||
-        hoveredMarkerId !== null ||
-        currentDishId !== dishId
-      ) {
-        return;
-      }
-      hideDish();
-    }, HIDE_DELAY_MS);
-  }
-
-  function cancelHide() {
-    if (hideTimer !== null) {
-      window.clearTimeout(hideTimer);
-      hideTimer = null;
-    }
-  }
-
-  /**
-   * marker 的 hover 状态参与统一判断，避免卡片自身的 leave 事件误收起。
-   * @param {string | null} markerId
-   * @param {boolean} isHovered
-   */
-  function setMarkerHovered(markerId, isHovered) {
-    if (isHovered) {
-      hoveredMarkerId = markerId;
-      cancelHide();
-      return;
-    }
-
-    if (hoveredMarkerId === markerId) {
-      hoveredMarkerId = null;
-    }
-    scheduleHide(currentDishId);
-  }
-
-  return {
-    showDish,
-    hideDish,
-    scheduleHide,
-    cancelHide,
-    setMarkerHovered,
-  };
+  return { showDish, hideDish };
 }
 
 function formatCoordinates(lng, lat) {
   return `${lng.toFixed(6)}, ${lat.toFixed(6)}`;
-}
-
-function supportsPointerEvents() {
-  return typeof window !== "undefined" && "PointerEvent" in window;
 }

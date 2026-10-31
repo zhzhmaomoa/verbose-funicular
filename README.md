@@ -12,14 +12,22 @@
 | 文件 | 职责 |
 | --- | --- |
 | `public/app.js` | 页面启动、数据加载和状态提示 |
-| `public/js/map-view.js` | 地图初始化、聚合标记、悬浮选菜 |
+| `public/js/map-view.js` | 地图初始化、聚合标记、点击选中与关闭逻辑 |
+| `public/js/map-viewport.js` | 启动时按真实地图尺寸适配全部标注 |
 | `public/js/marker-view.js` | 九宫格标记 DOM |
 | `public/js/dish-panel.js` | 右侧单菜详情面板 |
 | `public/js/data.js` | 接口分页、数据清洗、同址合并 |
 
-交互只有一个方向：九宫格触发 `mouseover` / `pointerover` / 键盘聚焦 →
-`map-view.js` 找到对应菜品 → `dish-panel.js` 显示右侧内容。
-没有选中任何菜格时，详情卡片整体隐藏且不拦截地图操作。
+交互在 PC、移动端和电视端完全一致：
+
+1. 点击九宫格菜格 → 高亮菜格 → `dish-panel.js` 显示右侧详情卡片。
+2. 点击卡片内部不会关闭卡片；点击卡片和标注以外的区域会关闭。
+3. 拖动或缩放地图会关闭卡片，避免卡片与标注位置错开。
+4. 键盘聚焦菜格后按 Enter / Space 也可打开，按 Escape 关闭。
+
+启动时的视口适配位于 `map-viewport.js`。它会等待地图容器获得真实尺寸，
+再按 Web Mercator 投影计算能容纳全部地点的 zoom/center；尺寸仍为 0 时只重试，
+不会继续执行错误计算。卡片默认隐藏，因此启动阶段不需要为右侧卡片留白。
 
 ## 启动
 

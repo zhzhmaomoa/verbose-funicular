@@ -318,13 +318,14 @@ button {
 }
 
 .food-marker:hover,
-.food-marker:focus-within {
+.food-marker:focus-within,
+.food-marker.is-active {
   z-index: 2;
   transform: translateY(-9px) scale(1.02);
   box-shadow: 0 20px 44px rgba(48, 35, 20, 0.3);
 }
 
-/* 高德为每个 Marker 创建独立层叠上下文，悬浮时由 JS 提升外层节点。 */
+/* 高德为每个 Marker 创建独立层叠上下文，选中时由 JS 提升外层节点。 */
 .amap-marker.is-food-marker-active {
   z-index: 2000 !important;
 }
@@ -350,6 +351,7 @@ button {
   min-width: 0;
   padding: 3px;
   border-radius: 14px;
+  cursor: pointer;
   outline: none;
   transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }

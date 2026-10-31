@@ -1,8 +1,8 @@
 /**
- * 地图标记的 DOM 视图。
+ * 地图标注的 DOM 视图。
  *
- * 标记只负责把同一地点的菜品排成九宫格。悬浮哪一格由 map-view.js
- * 统一处理，这样这里不需要持有详情卡引用。
+ * 标注只把同一地点的菜品排成九宫格。选中哪一格由 map-view.js 统一处理，
+ * 这里不持有详情卡片引用，也不监听 hover。
  *
  * @typedef {import("./data.js").FoodLocation} FoodLocation
  * @typedef {import("./data.js").FoodRate} FoodRate
@@ -12,8 +12,8 @@ const MAX_MARKER_DISHES = 9;
 const loadedImageSources = new Set();
 
 /**
- * 创建地点标记：最多九道菜，图片在上、菜名在下。
- * 每个菜品节点都会带上 dishIndex，详情卡根据它找到对应的完整数据。
+ * 创建地点标注：最多九道菜，图片在上、菜名在下。
+ * 每个菜品节点都会带上 dishIndex，详情卡片根据它找到对应的完整数据。
  *
  * @param {FoodLocation} location
  */
@@ -58,6 +58,7 @@ function createMarkerDish(food, dishIndex) {
   dish.dataset.dishIndex = String(dishIndex);
   dish.tabIndex = 0;
   dish.setAttribute("role", "button");
+  dish.setAttribute("aria-pressed", "false");
   dish.setAttribute("aria-label", `查看 ${food.title}`);
 
   const imageWrap = document.createElement("div");

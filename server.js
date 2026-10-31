@@ -8,7 +8,7 @@ app.use('/api', createProxyMiddleware({
 	changeOrigin: true,
 }));
 const port = 60000;
-const address = 'localhost';
+const address = '192.168.0.109';
 app.listen(port,address,()=>{
 	console.log("http://"+address+":"+port);
 });
