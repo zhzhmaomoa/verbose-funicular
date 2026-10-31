@@ -10,6 +10,7 @@ export function setupFullscreenButton(button, target, onFullscreenChange) {
 
   if (!target.requestFullscreen) {
     button.disabled = true;
+    button.style.visibility= 'hidden'
     label.textContent = "浏览器不支持全屏";
     return;
   }
